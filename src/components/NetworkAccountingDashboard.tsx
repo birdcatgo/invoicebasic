@@ -1,494 +1,461 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
-import { format, isAfter, parseISO } from 'date-fns';
-import { ChartBarIcon, ExclamationCircleIcon, CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/outline';
+import React, { useState, useRef, useEffect } from 'react';
+import { BarChart3, AlertCircle, XCircle, Download } from 'lucide-react';
+import { useNetworkData, updateInvoice } from '@/hooks/useNetworkData';
+import NetworkView from './NetworkView';
+import { networkAliases } from '@/utils/networkAliases';
+import Link from 'next/link';
 
-// Types
+// Define Invoice type
 interface Invoice {
   Network: string;
-  Pay_Period_Start_Date: string;
-  Pay_Period_End_Date: string;
+  Pay_Period_Start: string;
+  Pay_Period_End: string;
   Due_Date: string;
   Amount_Due: string;
   Invoice_Number: string;
+  Status: string;
+  Due_Status: string;
   Amount_Paid: string;
   Date_Paid: string;
-  Pay_Period: string;
-  Net_Terms: string;
-  Status: string;
+  Payment_Difference: string;
+  Ad_Revenue: string; // Required
+  Paid_Date: string; // Required
 }
 
-interface Alert {
-  id: string;
-  type: 'overdue' | 'missing_network' | 'period_end' | 'discrepancy' | 'error';
-  message: string;
+// Define Sections type
+interface Sections {
+  currentPeriod: Invoice[];
+  unpaidInvoices: Invoice[];
+  discrepancyCheck: Invoice[];
+  needsInvoicing: Invoice[];
 }
 
-// At the top of the file, add a utility function for generating unique IDs
-const generateUniqueId = (() => {
-  let counter = 0;
-  return (prefix: string) => `${prefix}-${Date.now()}-${counter++}`;
-})();
+// Define SectionKey type (remove null)
+type SectionKey = keyof Sections;
 
-// Summary Card Component
-const SummaryCard = ({ title, value, icon: Icon, color }: { 
-  title: string; 
-  value: string | number; 
-  icon: any;
-  color: string;
-}) => (
-  <div className={`p-4 bg-white rounded-lg shadow-sm border ${color} hover:shadow-md transition-shadow`}>
-    <div className="flex items-center justify-between">
+// Define InvoiceTableProps type
+interface InvoiceTableProps {
+  invoices: Invoice[];
+  onUpdate: (invoice: Invoice) => void;
+  onUndo: (invoice: Invoice) => void;
+  type: 'invoicing' | 'unpaid';
+}
+
+// StatsCard Component
+const StatsCard = ({ title, value, icon: Icon }: { title: string; value: string | number; icon: any }) => (
+  <div className="bg-white rounded-lg shadow p-6">
+    <div className="flex items-center justify-between mb-4">
       <div>
-        <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">{title}</p>
-        <p className="text-xl font-semibold text-gray-900">{value}</p>
+        <h3 className="text-sm text-gray-500">{title}</h3>
+        <p className="text-2xl font-bold mt-1">{value}</p>
       </div>
-      <Icon className="h-6 w-6 text-gray-400" />
+      <div className="bg-blue-50 p-2 rounded-lg">
+        <Icon className="h-5 w-5 text-blue-500" />
+      </div>
+    </div>
+    <div className="mt-2">
+      <BarChart3 className="h-4 w-4 text-gray-400" />
     </div>
   </div>
 );
 
-// Enhanced Alert Component
-const AlertDisplay = ({ alert }: { alert: Alert }) => {
-  const alertConfig = {
-    overdue: {
-      icon: ExclamationCircleIcon,
-      style: 'bg-red-50 text-red-700 border-red-200',
-      iconColor: 'text-red-400'
-    },
-    missing_network: {
-      icon: XCircleIcon,
-      style: 'bg-yellow-50 text-yellow-700 border-yellow-200',
-      iconColor: 'text-yellow-400'
-    },
-    period_end: {
-      icon: ChartBarIcon,
-      style: 'bg-blue-50 text-blue-700 border-blue-200',
-      iconColor: 'text-blue-400'
-    },
-    discrepancy: {
-      icon: ExclamationCircleIcon,
-      style: 'bg-orange-50 text-orange-700 border-orange-200',
-      iconColor: 'text-orange-400'
-    },
-    error: {
-      icon: XCircleIcon,
-      style: 'bg-gray-50 text-gray-700 border-gray-200',
-      iconColor: 'text-gray-400'
-    }
-  };
-
-  const config = alertConfig[alert.type];
-  const Icon = config.icon;
-
-  return (
-    <div className={`p-3 mb-2 border rounded-lg shadow-sm ${config.style} flex items-center space-x-2`}>
-      <Icon className={`h-4 w-4 ${config.iconColor}`} />
-      <span className="text-sm">{alert.message}</span>
-    </div>
-  );
-};
-
-// Enhanced Status Badge Component
-const StatusBadge = ({ status }: { status: string }) => {
-  const config = {
-    Paid: {
-      bg: 'bg-green-100',
-      text: 'text-green-800',
-      icon: CheckCircleIcon
-    },
-    Unpaid: {
-      bg: 'bg-red-100',
-      text: 'text-red-800',
-      icon: XCircleIcon
-    },
-    default: {
-      bg: 'bg-gray-100',
-      text: 'text-gray-800',
-      icon: XCircleIcon
-    }
-  };
-
-  const statusConfig = config[status as keyof typeof config] || config.default;
-  const Icon = statusConfig.icon;
-
-  return (
-    <span className={`px-2 py-0.5 inline-flex items-center space-x-1 text-xs font-medium rounded-full ${statusConfig.bg} ${statusConfig.text}`}>
-      <Icon className="h-3 w-3" />
-      <span>{status}</span>
-    </span>
-  );
-};
-
-// Filter Bar Component
-const FilterBar = ({ onFilterChange }: { onFilterChange: (filter: string) => void }) => (
-  <div className="mb-4 flex space-x-3">
-    <input
-      type="text"
-      placeholder="Search networks..."
-      className="px-3 py-1.5 text-sm border rounded-md focus:ring-1 focus:ring-blue-500 focus:border-transparent"
-      onChange={(e) => onFilterChange(e.target.value)}
-    />
-    <select className="px-3 py-1.5 text-sm border rounded-md focus:ring-1 focus:ring-blue-500 focus:border-transparent">
-      <option value="all">All Statuses</option>
-      <option value="paid">Paid</option>
-      <option value="unpaid">Unpaid</option>
-    </select>
-  </div>
-);
-
-// Add a new component for grouping alerts by network
-const GroupedAlerts = ({ alerts }: { alerts: Alert[] }) => {
-  const missingNetworks = alerts
-    .filter(alert => alert.type === 'missing_network')
-    .map(alert => alert.message.split(' is ')[0].replace('Network ', ''));
-
-  return (
-    <div className="bg-white rounded-lg shadow-sm p-4">
-      <h2 className="text-base font-semibold mb-3">Missing Networks ({missingNetworks.length})</h2>
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-        {missingNetworks.map((network) => (
-          <div key={network} className="bg-yellow-50 text-yellow-700 px-3 py-2 rounded-md text-sm">
-            {network}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
-
-// Invoice Table Row Component
-const InvoiceTableRow = ({
-  invoice,
-  onPaymentUpdate
-}: {
+// InvoiceRow Component
+interface InvoiceRowProps {
   invoice: Invoice;
-  onPaymentUpdate: (invoiceId: string, amount: string, date: string) => void;
-}) => (
-  <tr className="bg-white hover:bg-gray-50 transition-colors duration-200">
-    <td className="px-4 py-3 text-sm">{invoice.Network}</td>
-    <td className="px-4 py-3 text-sm">{invoice.Invoice_Number || '—'}</td>
-    <td className="px-4 py-3 text-sm">{invoice.Due_Date}</td>
-    <td className="px-4 py-3 text-sm font-medium">
-      {parseFloat(invoice.Amount_Due || '0').toLocaleString('en-US', {
-        style: 'currency',
-        currency: 'USD'
-      })}
-    </td>
-    <td className="px-4 py-3">
-      <input
-        type="text"
-        className="w-full px-2 py-1 text-sm border rounded focus:ring-1 focus:ring-blue-500"
-        value={invoice.Amount_Paid || ''}
-        placeholder="Enter amount"
-        onChange={(e) => onPaymentUpdate(invoice.Invoice_Number, e.target.value, invoice.Date_Paid)}
-      />
-    </td>
-    <td className="px-4 py-3">
-      <input
-        type="date"
-        className="w-full px-2 py-1 text-sm border rounded focus:ring-1 focus:ring-blue-500"
-        value={invoice.Date_Paid || ''}
-        onChange={(e) => onPaymentUpdate(invoice.Invoice_Number, invoice.Amount_Paid, e.target.value)}
-      />
-    </td>
-    <td className="px-4 py-3">
-      <StatusBadge status={invoice.Status || 'Needs Invoicing'} />
-    </td>
-    <td className="px-4 py-3">
-      <button
-        onClick={() => onPaymentUpdate(invoice.Invoice_Number, invoice.Amount_Due, format(new Date(), 'yyyy-MM-dd'))}
-        className="px-3 py-1 text-xs font-medium text-white bg-blue-500 rounded hover:bg-blue-600 focus:ring-2"
-      >
-        Mark as Paid
-      </button>
-    </td>
-  </tr>
+  onUpdate: (invoice: Invoice) => void;
+  onUndo: (invoice: Invoice) => void;
+  type: 'invoicing' | 'unpaid';
+}
+
+const InvoiceRow = ({ invoice, onUpdate, onUndo, type }: InvoiceRowProps) => {
+  const invoiceNumberRef = useRef<HTMLInputElement>(null);
+  const amountPaidRef = useRef<HTMLInputElement>(null);
+  const datePaidRef = useRef<HTMLInputElement>(null);
+
+  const formatCurrency = (amount: string) => {
+    if (!amount) return '';
+    const value = parseFloat(amount.replace(/[$,]/g, '') || '0');
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
+  };
+
+  const calculatePaymentDifference = (invoice: Invoice) => {
+    const amountDue = parseFloat(invoice.Amount_Due.replace(/[$,]/g, '') || '0');
+    const amountPaid = parseFloat(invoice.Amount_Paid.replace(/[$,]/g, '') || '0');
+    return amountDue - amountPaid;
+  };
+
+  const handleUpdate = () => {
+    const updatedInvoice = {
+      ...invoice,
+      Invoice_Number: invoiceNumberRef.current?.value || '',
+      Amount_Paid: amountPaidRef.current?.value?.replace(/[$,]/g, '') || '',
+      Paid_Date: datePaidRef.current?.value || '',
+    };
+    onUpdate(updatedInvoice);
+  };
+
+  const formatDate = (date: string) => {
+    return date ? new Date(date).toLocaleDateString() : '';
+  };
+
+  const isDiscrepancy = (invoice: Invoice) => {
+    const amountDue = parseFloat(invoice.Amount_Due.replace(/[$,]/g, '') || '0');
+    const amountPaid = parseFloat(invoice.Amount_Paid.replace(/[$,]/g, '') || '0');
+    return amountPaid > 0 && amountPaid < amountDue;
+  };
+
+  return (
+    <tr className="hover:bg-gray-50">
+      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 font-medium">{invoice.Network}</td>
+      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{formatDate(invoice.Pay_Period_Start)}</td>
+      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{formatDate(invoice.Pay_Period_End)}</td>
+      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{formatDate(invoice.Due_Date)}</td>
+      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 font-medium">{formatCurrency(invoice.Amount_Due)}</td>
+      <td className="px-4 py-3 whitespace-nowrap">
+        <input
+          ref={invoiceNumberRef}
+          type="text"
+          className="w-32 px-2 py-1 text-sm border rounded focus:ring-2 focus:ring-blue-500"
+          defaultValue={invoice.Invoice_Number}
+          placeholder="Enter invoice #"
+        />
+      </td>
+      {type === 'unpaid' && (
+        <>
+          <td className="px-4 py-3 whitespace-nowrap">
+            <span className={`px-2 py-1 text-sm rounded-full ${
+              invoice.Due_Status === 'Overdue' 
+                ? 'bg-red-100 text-red-800'
+                : invoice.Due_Status === 'Alert'
+                ? 'bg-yellow-100 text-yellow-800'
+                : invoice.Due_Status === 'Paid'
+                ? 'bg-green-100 text-green-800'
+                : 'bg-gray-100 text-gray-800'
+            }`}>
+              {invoice.Due_Status}
+            </span>
+          </td>
+          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{formatCurrency(invoice.Ad_Revenue)}</td>
+          <td className="px-4 py-3 whitespace-nowrap">
+            <input
+              ref={amountPaidRef}
+              type="text"
+              className="w-32 px-2 py-1 text-sm border rounded focus:ring-2 focus:ring-blue-500"
+              defaultValue={formatCurrency(invoice.Amount_Paid)}
+              placeholder="Enter amount"
+            />
+          </td>
+          <td className="px-4 py-3 whitespace-nowrap">
+            <input
+              ref={datePaidRef}
+              type="date"
+              className="w-32 px-2 py-1 text-sm border rounded focus:ring-2 focus:ring-blue-500"
+              defaultValue={invoice.Paid_Date}
+            />
+          </td>
+        </>
+      )}
+      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+        {formatCurrency(calculatePaymentDifference(invoice).toString())}
+      </td>
+      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+        {isDiscrepancy(invoice) ? (
+          <span className="px-2 py-1 text-sm rounded-full bg-red-100 text-red-800">
+            Discrepancy
+          </span>
+        ) : (
+          <span className="px-2 py-1 text-sm rounded-full bg-green-100 text-green-800">
+            No Discrepancy
+          </span>
+        )}
+      </td>
+      <td className="px-4 py-3 whitespace-nowrap text-sm space-x-2">
+        <button
+          className="px-3 py-1 text-blue-600 hover:text-blue-900 border border-blue-600 rounded"
+          onClick={handleUpdate}
+        >
+          Update
+        </button>
+        <button
+          className="px-3 py-1 text-gray-600 hover:text-gray-900 border border-gray-600 rounded"
+          onClick={() => onUndo(invoice)}
+        >
+          Undo
+        </button>
+      </td>
+    </tr>
+  );
+};
+
+// InvoiceTable Component
+const InvoiceTable = ({ invoices, onUpdate, onUndo, type }: InvoiceTableProps) => {
+  return (
+    <div className="mt-6 bg-white rounded-lg shadow overflow-x-auto">
+      <table className="min-w-full divide-y divide-gray-200">
+        <thead className="bg-gray-50">
+          <tr>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Network</th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pay Period Start</th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pay Period End</th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Due Date</th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount Due</th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Invoice Number</th>
+            {type === 'unpaid' && (
+              <>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Due Status</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ad Revenue</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount Paid</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Paid Date</th>
+              </>
+            )}
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Payment Difference</th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Discrepancy Check</th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+          </tr>
+        </thead>
+        <tbody className="bg-white divide-y divide-gray-200">
+          {invoices.map((invoice: Invoice, index: number) => (
+            <InvoiceRow
+              key={`${invoice.Network}-${index}`}
+              invoice={invoice}
+              onUpdate={onUpdate}
+              onUndo={onUndo}
+              type={type}
+            />
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+// CurrentPeriodSection Component
+const CurrentPeriodSection = ({ invoices, onUpdate, onUndo }: { invoices: Invoice[], onUpdate: (invoice: Invoice) => void, onUndo: (invoice: Invoice) => void }) => (
+  <div className="mb-8">
+    <h2 className="text-lg font-semibold mb-4">Current Period</h2>
+    <InvoiceTable invoices={invoices} onUpdate={onUpdate} onUndo={onUndo} type="invoicing" />
+  </div>
 );
 
+// DiscrepancyCheckSection Component
+const DiscrepancyCheckSection = ({ invoices, onUpdate, onUndo }: { invoices: Invoice[], onUpdate: (invoice: Invoice) => void, onUndo: (invoice: Invoice) => void }) => (
+  <div className="mb-8">
+    <h2 className="text-lg font-semibold mb-4">Discrepancy Check</h2>
+    <InvoiceTable invoices={invoices} onUpdate={onUpdate} onUndo={onUndo} type="unpaid" />
+  </div>
+);
+
+// InvoicingSection Component
+const InvoicingSection = ({ invoices, onUpdate, onUndo }: { invoices: Invoice[], onUpdate: (invoice: Invoice) => void, onUndo: (invoice: Invoice) => void }) => {
+  const filteredInvoices = invoices.filter(inv => inv.Network && inv.Amount_Due !== '0');
+  return (
+    <div className="mb-8">
+      <h2 className="text-lg font-semibold mb-4">Needs Invoicing</h2>
+      <InvoiceTable invoices={filteredInvoices} onUpdate={onUpdate} onUndo={onUndo} type="invoicing" />
+    </div>
+  );
+};
+
+// UnpaidSection Component
+const UnpaidSection = ({ invoices, onUpdate, onUndo }: { invoices: Invoice[], onUpdate: (invoice: Invoice) => void, onUndo: (invoice: Invoice) => void }) => (
+  <div className="mb-8">
+    <h2 className="text-lg font-semibold mb-4">Unpaid Invoices</h2>
+    <InvoiceTable invoices={invoices} onUpdate={onUpdate} onUndo={onUndo} type="unpaid" />
+  </div>
+);
+
+// Main Dashboard Component
 const NetworkAccountingDashboard = () => {
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [networks, setNetworks] = useState<string[]>([]);
-  const [alerts, setAlerts] = useState<Alert[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState("");
-
-  const checkAlerts = (invoiceData: Invoice[], networkList: string[]) => {
-    const newAlerts: Alert[] = [];
-    const today = new Date();
-
-    // Check for overdue invoices
-    invoiceData.forEach(invoice => {
-      if (invoice.Status === 'Unpaid' && isAfter(today, parseISO(invoice.Due_Date))) {
-        newAlerts.push({
-          id: generateUniqueId('overdue'),
-          type: 'overdue',
-          message: `Invoice ${invoice.Invoice_Number} for ${invoice.Network} is overdue`
-        });
-      }
-    });
-
-    // Check for missing networks
-    const accountingNetworks = [...new Set(invoiceData.map(inv => inv.Network))];
-    networkList.forEach(network => {
-      if (!accountingNetworks.includes(network)) {
-        newAlerts.push({
-          id: generateUniqueId('missing'),
-          type: 'missing_network',
-          message: `Network ${network} is missing from accounting records`
-        });
-      }
-    });
-
-    // Check for period ends
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    
-    invoiceData.forEach(invoice => {
-      if (invoice.Pay_Period_End_Date && 
-          isAfter(parseISO(invoice.Pay_Period_End_Date), yesterday) && 
-          isAfter(today, parseISO(invoice.Pay_Period_End_Date))) {
-        newAlerts.push({
-          id: generateUniqueId('period'),
-          type: 'period_end',
-          message: `Period ended for ${invoice.Network}. Generate new invoice.`
-        });
-      }
-    });
-
-    setAlerts(newAlerts);
-  };
-
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        // Load cash flow data
-        const cashFlowResponse = await fetch('/api/sheets?sheet=cashFlow&range=Main Sheet!A:K');
-        const cashFlowData = await cashFlowResponse.json();
-        const uniqueNetworks = [...new Set(cashFlowData.data.slice(1).map((row: string[]) => row[1]))].filter((val): val is string => Boolean(val));
-        setNetworks(uniqueNetworks);
-
-        // Load network accounting data
-        const accountingResponse = await fetch('/api/sheets?sheet=networkAccounting&range=A:K');
-        const accountingData = await accountingResponse.json();
-        
-        // Convert sheet data to invoice objects
-        const invoicesData = accountingData.data.slice(1).map((row: string[]) => ({
-          Network: row[0],
-          Pay_Period_Start_Date: row[1],
-          Pay_Period_End_Date: row[2],
-          Due_Date: row[3],
-          Amount_Due: row[4],
-          Invoice_Number: row[5],
-          Amount_Paid: row[6],
-          Date_Paid: row[7],
-          Pay_Period: row[8],
-          Net_Terms: row[9],
-          Status: row[10]
-        }));
-
-        setInvoices(invoicesData);
-        checkAlerts(invoicesData, uniqueNetworks);
-      } catch (error) {
-        console.error('Error loading data:', error);
-        setAlerts(prev => [...prev, {
-          id: generateUniqueId('error'),
-          type: 'error',
-          message: 'Failed to load invoice data. Please try again.'
-        }]);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadData();
-  }, []);
-
-  const handlePaymentUpdate = async (invoiceId: string, amount: string, date: string) => {
-    try {
-      const invoiceIndex = invoices.findIndex(inv => inv.Invoice_Number === invoiceId);
-      if (invoiceIndex === -1) return;
-
-      const updatedInvoices = [...invoices];
-      const updatedInvoice = {
-        ...updatedInvoices[invoiceIndex],
-        Amount_Paid: amount,
-        Date_Paid: date,
-        Status: amount ? 'Paid' : 'Unpaid'
-      };
-      updatedInvoices[invoiceIndex] = updatedInvoice;
-      setInvoices(updatedInvoices);
-
-      const rowNumber = invoiceIndex + 2;
-      await fetch('/api/sheets', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          sheetName: 'networkAccounting',
-          range: `G${rowNumber}:K${rowNumber}`,
-          values: [[amount, date, updatedInvoice.Pay_Period, updatedInvoice.Net_Terms, updatedInvoice.Status]]
-        }),
-      });
-
-      // Check for payment discrepancy
-      const dueAmount = parseFloat(updatedInvoice.Amount_Due.replace(/[$,]/g, ''));
-      const paidAmount = parseFloat(amount.replace(/[$,]/g, ''));
-      
-      if (!isNaN(dueAmount) && !isNaN(paidAmount) && dueAmount !== paidAmount) {
-        setAlerts(prev => [...prev, {
-          id: generateUniqueId('discrepancy'),
-          type: 'discrepancy',
-          message: `Payment discrepancy detected for invoice ${invoiceId}: Expected $${dueAmount}, received $${paidAmount}`
-        }]);
-      }
-    } catch (error) {
-      console.error('Error updating payment:', error);
-      setAlerts(prev => [...prev, {
-        id: generateUniqueId('error'),
-        type: 'error',
-        message: 'Failed to update payment. Please try again.'
-      }]);
-    }
-  };
-
-  // Calculate summary statistics
-  const summaryStats = {
-    totalInvoices: invoices.length,
-    unpaidInvoices: invoices.filter(inv => inv.Status === 'Unpaid').length,
-    totalAmount: invoices.reduce((sum, inv) => {
-      const amount = inv.Amount_Due?.replace(/[$,]/g, '') || '0';
-      return sum + (parseFloat(amount) || 0);
-    }, 0),
-    missingNetworks: networks.length - new Set(invoices.map(inv => inv.Network)).size
-  };
-
-  // Filter invoices based on search
-  const filteredInvoices = invoices.filter(invoice => {
-    const searchTerm = filter.toLowerCase();
-    const network = invoice.Network?.toLowerCase() || '';
-    const invoiceNumber = invoice.Invoice_Number?.toLowerCase() || '';
-    
-    return network.includes(searchTerm) || invoiceNumber.includes(searchTerm);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const { loading, error, invoices, setInvoices, summaryStats, missingNetworks } = useNetworkData();
+  const [selectedNetwork, setSelectedNetwork] = useState<string | null>(null);
+  const [sections, setSections] = useState<Sections>({
+    currentPeriod: [],
+    unpaidInvoices: [],
+    discrepancyCheck: [],
+    needsInvoicing: [],
   });
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-500"></div>
-      </div>
-    );
-  }
+  // Parse the raw data
+  useEffect(() => {
+    if (invoices) {
+      console.log('Raw invoices data:', invoices); // Debugging: Log raw data
+      const parsedData = parseData(invoices);
+      console.log('Parsed sections:', parsedData); // Debugging: Log parsed data
+      setSections(parsedData);
+    }
+  }, [invoices]);
 
+  const parseData = (data: any[]): Sections => {
+    const sections: Sections = {
+      currentPeriod: [],
+      unpaidInvoices: [],
+      discrepancyCheck: [],
+      needsInvoicing: [],
+    };
+
+    let currentSection: SectionKey | null = null;
+
+    data.forEach((row) => {
+      if (row.length === 0 || !row.Network) return; // Skip empty rows or rows without a Network
+
+      // Detect section headers
+      if (row.Network === 'Current Period Networks with Ad Revenue:') {
+        currentSection = 'currentPeriod';
+        return;
+      } else if (row.Network === 'Unpaid Invoices:') {
+        currentSection = 'unpaidInvoices';
+        return;
+      } else if (row.Network === 'Discrepancy Check:') {
+        currentSection = 'discrepancyCheck';
+        return;
+      } else if (row.Network === 'Needs Invoicing:') {
+        currentSection = 'needsInvoicing';
+        return;
+      }
+
+      // Skip header rows
+      if (row.Network === 'Network') return;
+
+      // Map rows to objects
+      const invoice: Invoice = {
+        Network: row.Network || '',
+        Pay_Period_Start: row.Pay_Period_Start || '',
+        Pay_Period_End: row.Pay_Period_End || '',
+        Due_Date: row.Due_Date || '',
+        Amount_Due: row.Amount_Due || '',
+        Invoice_Number: row.Invoice_Number || '',
+        Status: row.Status || '',
+        Due_Status: row.Due_Status || '',
+        Amount_Paid: row.Amount_Paid || '',
+        Date_Paid: row.Date_Paid || '',
+        Payment_Difference: row.Payment_Difference || '',
+        Ad_Revenue: row.Ad_Revenue || '', // Default to empty string if undefined
+        Paid_Date: row.Paid_Date || '', // Default to empty string if undefined
+      };
+
+      // Add to the appropriate section
+      if (currentSection) {
+        sections[currentSection].push(invoice);
+      } else if (invoice.Status === 'Current') {
+        // If no section is explicitly set, but the invoice status is 'Current', add it to currentPeriod
+        sections.currentPeriod.push(invoice);
+      }
+    });
+
+    return sections;
+  };
+
+  // Filter invoices based on search term and status
+  const filterInvoices = (invoices: Invoice[], searchTerm: string, statusFilter: string) => {
+    return invoices.filter((invoice: Invoice) => {
+      const matchesSearch = !searchTerm || invoice.Network.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesStatus = !statusFilter || invoice.Status === statusFilter;
+      return matchesSearch && matchesStatus;
+    });
+  };
+
+  const filteredUnpaidInvoices = filterInvoices(sections.unpaidInvoices, searchTerm, statusFilter);
+  const filteredNeedsInvoicing = filterInvoices(sections.needsInvoicing, searchTerm, statusFilter);
+  const filteredCurrentPeriod = filterInvoices(sections.currentPeriod, searchTerm, statusFilter);
+  const filteredDiscrepancyCheck = filterInvoices(sections.discrepancyCheck, searchTerm, statusFilter);
+
+  // Handle update and undo
+  const handleUpdate = async (invoice: Invoice, section: SectionKey) => {
+    try {
+      const updatedInvoice = { ...invoice };
+      const updatedSections = { ...sections };
+      updatedSections[section] = updatedSections[section].map((inv: Invoice) =>
+        inv.Network === invoice.Network ? updatedInvoice : inv
+      );
+
+      setSections(updatedSections);
+    } catch (error) {
+      console.error('Failed to update invoice:', error);
+    }
+  };
+
+  const handleUndo = (section: SectionKey) => {
+    // Restore the previous state
+    const updatedSections = { ...sections };
+    updatedSections[section] = sections[section];
+    setSections(updatedSections);
+  };
+
+  // Render sections
   return (
-    <div className="p-4 max-w-7xl mx-auto space-y-4">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Network Accounting Dashboard</h1>
-        <button className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1.5 text-sm rounded-md transition-colors">
-          Export Data
-        </button>
-      </div>
+    <div className="min-h-screen bg-gray-50 p-8">
+      <div className="max-w-7xl mx-auto">
+        <h1 className="text-2xl font-semibold mb-8">Network Accounting Dashboard</h1>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <SummaryCard 
-          title="Total Invoices" 
-          value={summaryStats.totalInvoices}
-          icon={ChartBarIcon}
-          color="border-blue-100"
-        />
-        <SummaryCard 
-          title="Unpaid Invoices" 
-          value={summaryStats.unpaidInvoices}
-          icon={ExclamationCircleIcon}
-          color="border-red-100"
-        />
-        <SummaryCard 
-          title="Total Amount" 
-          value={`$${summaryStats.totalAmount.toLocaleString()}`}
-          icon={ChartBarIcon}
-          color="border-green-100"
-        />
-        <SummaryCard 
-          title="Missing Networks" 
-          value={summaryStats.missingNetworks}
-          icon={XCircleIcon}
-          color="border-yellow-100"
-        />
-      </div>
+        {/* Link to Network Details Page */}
+        <Link href="/network-details">
+          <button className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">
+            View Network Details
+          </button>
+        </Link>
 
-      {/* Group missing network alerts separately */}
-      {alerts.some(alert => alert.type === 'missing_network') && (
-        <GroupedAlerts alerts={alerts} />
-      )}
-
-      {/* Other alerts */}
-      {alerts.some(alert => alert.type !== 'missing_network') && (
-        <div className="bg-white rounded-lg shadow-sm p-4">
-          <h2 className="text-base font-semibold mb-3">Alerts</h2>
-          <div className="space-y-2">
-            {alerts
-              .filter(alert => alert.type !== 'missing_network')
-              .map((alert) => (
-                <AlertDisplay key={alert.id} alert={alert} />
-              ))}
+        {/* Search and Filter */}
+        <div className="bg-white rounded-lg shadow p-4 mb-8">
+          <div className="flex gap-4">
+            <input
+              type="text"
+              placeholder="Search networks..."
+              className="flex-1 px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+            <select
+              className="px-4 py-2 border rounded-lg bg-white"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              <option value="">All Statuses</option>
+              <option value="Paid">Paid</option>
+              <option value="Unpaid">Unpaid</option>
+              <option value="Needs Invoicing">Needs Invoicing</option>
+            </select>
           </div>
         </div>
-      )}
 
-      {/* Enhanced Filter Bar */}
-      <div className="flex flex-wrap gap-3 bg-white p-4 rounded-lg shadow-sm">
-        <input
-          type="text"
-          placeholder="Search networks..."
-          className="flex-1 min-w-[200px] px-3 py-1.5 text-sm border rounded focus:ring-1 focus:ring-blue-500"
-          onChange={(e) => setFilter(e.target.value)}
-        />
-        <select className="px-3 py-1.5 text-sm border rounded focus:ring-1 focus:ring-blue-500">
-          <option value="all">All Statuses</option>
-          <option value="needs_invoicing">Needs Invoicing</option>
-          <option value="paid">Paid</option>
-          <option value="unpaid">Unpaid</option>
-        </select>
-      </div>
+        {/* Current Period Section */}
+        {filteredCurrentPeriod.length > 0 && (
+          <CurrentPeriodSection
+            invoices={filteredCurrentPeriod}
+            onUpdate={(invoice: Invoice) => handleUpdate(invoice, 'currentPeriod')}
+            onUndo={() => handleUndo('currentPeriod')}
+          />
+        )}
 
-      {/* Table with fixed layout */}
-      <div className="bg-white rounded-lg shadow-sm overflow-x-auto">
-        <table className="w-full">
-          <colgroup>
-            <col className="w-[15%]" /> {/* Network */}
-            <col className="w-[10%]" /> {/* Invoice # */}
-            <col className="w-[10%]" /> {/* Due Date */}
-            <col className="w-[12%]" /> {/* Amount Due */}
-            <col className="w-[15%]" /> {/* Amount Paid */}
-            <col className="w-[15%]" /> {/* Date Paid */}
-            <col className="w-[10%]" /> {/* Status */}
-            <col className="w-[13%]" /> {/* Actions */}
-          </colgroup>
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Network</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Invoice #</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Due Date</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Amount Due</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Amount Paid</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date Paid</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-200">
-            {filteredInvoices.map((invoice, index) => (
-              <InvoiceTableRow
-                key={`${invoice.Invoice_Number}-${invoice.Network}-${index}`}
-                invoice={invoice}
-                onPaymentUpdate={handlePaymentUpdate}
-              />
-            ))}
-          </tbody>
-        </table>
+        {/* Unpaid Invoices Section */}
+        {filteredUnpaidInvoices.length > 0 && (
+          <UnpaidSection
+            invoices={filteredUnpaidInvoices}
+            onUpdate={(invoice: Invoice) => handleUpdate(invoice, 'unpaidInvoices')}
+            onUndo={() => handleUndo('unpaidInvoices')}
+          />
+        )}
+
+        {/* Discrepancy Check Section */}
+        {filteredDiscrepancyCheck.length > 0 && (
+          <DiscrepancyCheckSection
+            invoices={filteredDiscrepancyCheck}
+            onUpdate={(invoice: Invoice) => handleUpdate(invoice, 'discrepancyCheck')}
+            onUndo={() => handleUndo('discrepancyCheck')}
+          />
+        )}
+
+        {/* Needs Invoicing Section */}
+        {filteredNeedsInvoicing.length > 0 && (
+          <InvoicingSection
+            invoices={filteredNeedsInvoicing}
+            onUpdate={(invoice: Invoice) => handleUpdate(invoice, 'needsInvoicing')}
+            onUndo={() => handleUndo('needsInvoicing')}
+          />
+        )}
       </div>
     </div>
   );

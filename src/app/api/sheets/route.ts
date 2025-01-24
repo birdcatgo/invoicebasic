@@ -1,46 +1,75 @@
 import { NextResponse } from 'next/server';
-import { getSheetData, updateSheetData, SPREADSHEET_IDS } from '../../../lib/googleSheets';
 import { google } from 'googleapis';
 
+const SPREADSHEET_IDS = {
+  networkAccounting: process.env.GOOGLE_SHEETS_NETWORK_ACCOUNTING_ID,
+  cashFlow: process.env.GOOGLE_SHEETS_CASHFLOW_ID,
+};
 
-export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const sheetName = searchParams.get('sheet');
-  const range = searchParams.get('range');
+async function authorizeGoogleSheets() {
+  const auth = new google.auth.GoogleAuth({
+    credentials: {
+      client_email: process.env.GOOGLE_SHEETS_CLIENT_EMAIL,
+      private_key: process.env.GOOGLE_SHEETS_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+    },
+    scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
+  });
 
-  if (!sheetName || !range) {
-    return NextResponse.json({ error: 'Sheet name and range are required' }, { status: 400 });
-  }
-
-  try {
-    const spreadsheetId = SPREADSHEET_IDS[sheetName as keyof typeof SPREADSHEET_IDS];
-    if (!spreadsheetId) {
-      return NextResponse.json({ error: 'Invalid sheet name' }, { status: 400 });
-    }
-    const data = await getSheetData(spreadsheetId, range as string);
-    return NextResponse.json({ data });
-  } catch (error) {
-    console.error('Error reading from Google Sheets:', error);
-    return NextResponse.json({ error: 'Failed to read from Google Sheets' }, { status: 500 });
-  }
+  return google.sheets({ version: 'v4', auth });
 }
 
-export async function POST(request: Request) {
-  const { sheetName, range, values } = await request.json();
+async function getSheetData(spreadsheetId: string, range: string) {
+  const sheets = await authorizeGoogleSheets();
+  const response = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range,
+  });
 
-  if (!sheetName || !range || !values) {
-    return NextResponse.json({ error: 'Sheet name, range, and values are required' }, { status: 400 });
-  }
+  return response.data.values || [];
+}
 
+export async function GET(request: Request) {
   try {
-    const spreadsheetId = SPREADSHEET_IDS[sheetName as keyof typeof SPREADSHEET_IDS];
-    if (!spreadsheetId) {
-      return NextResponse.json({ error: 'Invalid sheet name' }, { status: 400 });
+    const { searchParams } = new URL(request.url);
+    const sheet = searchParams.get('sheet');
+    const range = searchParams.get('range');
+
+    if (!sheet || !range) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Missing required parameters: sheet or range.',
+        },
+        { status: 400 }
+      );
     }
-    const result = await updateSheetData(spreadsheetId, range as string, values);
-    return NextResponse.json({ result });
+
+    const spreadsheetId = SPREADSHEET_IDS[sheet as keyof typeof SPREADSHEET_IDS];
+
+    if (!spreadsheetId) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Sheet '${sheet}' is not defined. Available sheets: ${Object.keys(SPREADSHEET_IDS).join(', ')}`,
+        },
+        { status: 400 }
+      );
+    }
+
+    const data = await getSheetData(spreadsheetId, range);
+
+    return NextResponse.json({
+      success: true,
+      data,
+    });
   } catch (error) {
-    console.error('Error updating Google Sheets:', error);
-    return NextResponse.json({ error: 'Failed to update Google Sheets' }, { status: 500 });
+    console.error('Sheets API error:', error);
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to fetch sheet data.',
+      },
+      { status: 500 }
+    );
   }
 }
