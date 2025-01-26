@@ -23,7 +23,7 @@ interface InvoiceTableProps {
   invoices: Invoice[];
   onUpdate: (invoice: Invoice) => void;
   onUndo: (invoice: Invoice) => void;
-  type: 'invoicing' | 'unpaid';
+  type: 'invoicing' | 'unpaid' | 'current';
 }
 
 // StatsCard Component
@@ -49,13 +49,14 @@ interface InvoiceRowProps {
   invoice: Invoice;
   onUpdate: (invoice: Invoice) => void;
   onUndo: (invoice: Invoice) => void;
-  type: 'invoicing' | 'unpaid';
+  type: 'invoicing' | 'unpaid' | 'current';
 }
 
 const InvoiceRow = ({ invoice, onUpdate, onUndo, type }: InvoiceRowProps) => {
   const invoiceNumberRef = useRef<HTMLInputElement>(null);
   const amountPaidRef = useRef<HTMLInputElement>(null);
   const datePaidRef = useRef<HTMLInputElement>(null);
+  const amountDueRef = useRef<HTMLInputElement>(null);
 
   const formatCurrency = (amount: string) => {
     const value = parseFloat(amount.replace(/[$,]/g, '') || '0');
@@ -66,13 +67,22 @@ const InvoiceRow = ({ invoice, onUpdate, onUndo, type }: InvoiceRowProps) => {
   };
 
   const handleUpdate = () => {
-    const updatedInvoice = {
-      ...invoice,
-      Invoice_Number: invoiceNumberRef.current?.value || '',
-      Amount_Paid: amountPaidRef.current?.value?.replace(/[$,]/g, '') || '',
-      Paid_Date: datePaidRef.current?.value || '',
-    };
-    onUpdate(updatedInvoice);
+    if (type === 'current') {
+      const updatedInvoice = {
+        ...invoice,
+        Invoice_Number: invoiceNumberRef.current?.value || '',
+        Amount_Due: amountDueRef.current?.value?.replace(/[$,]/g, '') || invoice.Amount_Due,
+      };
+      onUpdate(updatedInvoice);
+    } else if (type === 'unpaid') {
+      const updatedInvoice = {
+        ...invoice,
+        Invoice_Number: invoiceNumberRef.current?.value || '',
+        Amount_Paid: amountPaidRef.current?.value?.replace(/[$,]/g, '') || '',
+        Paid_Date: datePaidRef.current?.value || '',
+      };
+      onUpdate(updatedInvoice);
+    }
   };
 
   const formatDate = (date: string) => {
@@ -96,15 +106,28 @@ const InvoiceRow = ({ invoice, onUpdate, onUndo, type }: InvoiceRowProps) => {
       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 font-medium">
         {formatCurrency(invoice.Amount_Due)}
       </td>
-      <td className="px-4 py-3 whitespace-nowrap">
-        <input
-          ref={invoiceNumberRef}
-          type="text"
-          className="w-32 px-2 py-1 text-sm border rounded focus:ring-2 focus:ring-blue-500"
-          defaultValue={invoice.Invoice_Number}
-          placeholder="Enter invoice #"
-        />
-      </td>
+      {type === 'current' && (
+        <>
+          <td className="px-4 py-3 whitespace-nowrap">
+            <input
+              ref={invoiceNumberRef}
+              type="text"
+              className="w-32 px-2 py-1 text-sm border rounded focus:ring-2 focus:ring-blue-500"
+              defaultValue={invoice.Invoice_Number}
+              placeholder="Enter invoice #"
+            />
+          </td>
+          <td className="px-4 py-3 whitespace-nowrap">
+            <input
+              ref={amountDueRef}
+              type="text"
+              className="w-32 px-2 py-1 text-sm border rounded focus:ring-2 focus:ring-blue-500"
+              defaultValue={formatCurrency(invoice.Amount_Due)}
+              placeholder="Enter amount"
+            />
+          </td>
+        </>
+      )}
       {type === 'unpaid' && (
         <>
           <td className="px-4 py-3 whitespace-nowrap">
@@ -156,7 +179,7 @@ const InvoiceRow = ({ invoice, onUpdate, onUndo, type }: InvoiceRowProps) => {
           </span>
         )}
       </td>
-      <td className="px-4 py-3 whitespace-nowrap text-sm space-x-2">
+      <td className="px-4 py-3 whitespace-nowrap space-x-2">
         <button
           className="px-3 py-1 text-blue-600 hover:text-blue-900 border border-blue-600 rounded"
           onClick={handleUpdate}
@@ -215,10 +238,23 @@ const InvoiceTable = ({ invoices, onUpdate, onUndo, type }: InvoiceTableProps) =
 };
 
 // CurrentPeriodSection Component
-const CurrentPeriodSection = ({ invoices, onUpdate, onUndo }: { invoices: Invoice[], onUpdate: (invoice: Invoice) => void, onUndo: (invoice: Invoice) => void }) => (
+const CurrentPeriodSection = ({ 
+  invoices, 
+  onUpdate, 
+  onUndo 
+}: { 
+  invoices: Invoice[], 
+  onUpdate: (invoice: Invoice, section?: SectionKey) => void,  // Make section parameter optional
+  onUndo: (invoice: Invoice) => void 
+}) => (
   <div className="mb-8">
     <h2 className="text-lg font-semibold mb-4">Current Period</h2>
-    <InvoiceTable invoices={invoices} onUpdate={onUpdate} onUndo={onUndo} type="invoicing" />
+    <InvoiceTable 
+      invoices={invoices} 
+      onUpdate={(invoice) => onUpdate(invoice, 'currentPeriod')}
+      onUndo={onUndo} 
+      type="current" 
+    />
   </div>
 );
 
