@@ -37,6 +37,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 }
 
+export const SPREADSHEET_IDS = {
+  networkAccounting: process.env.GOOGLE_SHEETS_NETWORK_ACCOUNTING_ID,
+  cashFlow: process.env.GOOGLE_SHEETS_CASHFLOW_ID,
+} as const;
+
 export async function authorizeGoogleSheets() {
   const auth = new google.auth.GoogleAuth({
     credentials: {
