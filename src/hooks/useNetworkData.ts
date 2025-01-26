@@ -4,17 +4,10 @@ import { useState, useEffect } from 'react';
 
 interface Invoice {
   Network: string;
-  Pay_Period_Start: string;
-  Pay_Period_End: string;
-  Due_Date: string;
-  Amount_Due: string;
   Invoice_Number: string;
-  Status: string;
-  Due_Status: string;
-  Ad_Revenue: string;
-  Amount_Paid: string;
-  Paid_Date: string;
-  Payment_Difference: string;
+  Amount_Due: string;
+  Pay_Period?: string;  // For Current Network Exposure
+  Status?: string;      // For Unpaid Invoices
 }
 
 interface SummaryStats {
@@ -73,38 +66,25 @@ export const useNetworkData = () => {
 
       // Process invoices
       const processedInvoices = accountingData.data.map((row: any[]) => {
-        const dueDate = new Date(row[3]);
-        const today = new Date();
-        const amountDue = parseFloat((row[4] || '0').replace(/[$,]/g, ''));
-        const amountPaid = parseFloat((row[9] || '0').replace(/[$,]/g, ''));
-        const paymentDifference = amountDue - amountPaid;
-
-        // Determine status
-        let dueStatus = row[7] || 'Not Due';
-        if (row[6] === 'Unpaid') {
-          if (amountPaid > 0 && Math.abs(paymentDifference) > 0.01) {
-            dueStatus = 'Alert'; // Payment discrepancy
-          } else if (amountPaid >= amountDue) {
-            dueStatus = 'Paid'; // Full payment received
-          } else if (dueDate < today) {
-            dueStatus = 'Overdue'; // Past due date with no or partial payment
-          }
+        // Determine if this is a Current Network Exposure or Unpaid Invoice row
+        const isCurrentExposure = row[3]?.includes('-');
+        
+        if (isCurrentExposure) {
+          return {
+            Network: row[0] || '',
+            Invoice_Number: row[1] || '',
+            Amount_Due: row[2] || '0',
+            Pay_Period: row[3] || '',
+            Status: 'Current'
+          };
+        } else {
+          return {
+            Network: row[0] || '',
+            Invoice_Number: row[1] || '',
+            Amount_Due: row[2] || '0',
+            Status: row[3] || 'Unpaid'
+          };
         }
-
-        return {
-          Network: row[0] || '',
-          Pay_Period_Start: row[1] || '',
-          Pay_Period_End: row[2] || '',
-          Due_Date: row[3] || '',
-          Amount_Due: row[4] || '0',
-          Invoice_Number: row[5] || '',
-          Status: row[6] || 'Needs Invoicing',
-          Due_Status: dueStatus,
-          Ad_Revenue: row[8] || '0',
-          Amount_Paid: row[9] || '',
-          Paid_Date: row[10] || '',
-          Payment_Difference: paymentDifference.toFixed(2),
-        };
       });
 
       // Get unique networks from cash flow data

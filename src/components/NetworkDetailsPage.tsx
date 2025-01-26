@@ -1,121 +1,103 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNetworkData } from '@/hooks/useNetworkData';
+import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 
-// Define Invoice type (if not already defined in useNetworkData)
+// Use the same Invoice interface from useNetworkData
 interface Invoice {
   Network: string;
-  Pay_Period_Start: string;
-  Pay_Period_End: string;
-  Due_Date: string;
-  Amount_Due: string;
   Invoice_Number: string;
-  Status: string;
-  Due_Status: string;
-  Ad_Revenue: string;
-  Amount_Paid: string;
-  Paid_Date: string;
-  Payment_Difference: string;
+  Amount_Due: string;
+  Pay_Period?: string;
+  Status?: string;
 }
 
 const NetworkDetailsPage = () => {
-  const { networks, fetchNetworkDetails } = useNetworkData();
+  const { loading, error, networks, fetchNetworkDetails } = useNetworkData();
   const [selectedNetwork, setSelectedNetwork] = useState<string | null>(null);
-  const [networkDetails, setNetworkDetails] = useState<Invoice[]>([]);
+  const [networkInvoices, setNetworkInvoices] = useState<Invoice[]>([]);
 
-  // Fetch network details when a network is selected
   useEffect(() => {
     if (selectedNetwork) {
-      const details = fetchNetworkDetails(selectedNetwork);
-      setNetworkDetails(details);
+      const invoices = fetchNetworkDetails(selectedNetwork);
+      setNetworkInvoices(invoices);
     }
   }, [selectedNetwork, fetchNetworkDetails]);
+
+  if (loading) return <div>Loading...</div>;
+  if (error) return <div>Error: {error}</div>;
 
   return (
     <div className="min-h-screen bg-gray-50 p-8">
       <div className="max-w-7xl mx-auto">
-        <h1 className="text-2xl font-semibold mb-8">Network Details</h1>
-
-        {/* Back to Dashboard Link */}
-        <Link href="/dashboard">
-          <button className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 mb-8">
-            Back to Dashboard
-          </button>
-        </Link>
-
-        {/* Network Selection Dropdown */}
-        <div className="mb-8">
-          <label htmlFor="network" className="block text-sm font-medium text-gray-700">
-            Select Network
-          </label>
-          <select
-            id="network"
-            className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"
-            value={selectedNetwork || ''}
-            onChange={(e) => setSelectedNetwork(e.target.value)}
-          >
-            <option value="">Select a network</option>
-            {networks.map((network) => (
-              <option key={network} value={network}>
-                {network}
-              </option>
-            ))}
-          </select>
+        <div className="flex items-center mb-8">
+          <Link href="/">
+            <button className="mr-4 p-2 hover:bg-gray-100 rounded-full">
+              <ArrowLeft className="h-6 w-6" />
+            </button>
+          </Link>
+          <h1 className="text-2xl font-bold">Network Details</h1>
         </div>
 
-        {/* Network Details Table */}
-        {selectedNetwork && (
-          <div className="bg-white rounded-lg shadow overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Pay Period Start
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Pay Period End
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Amount Due
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Amount Paid
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Payment Difference
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Status
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {networkDetails.map((detail, index) => (
-                  <tr key={index}>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                      {detail.Pay_Period_Start}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                      {detail.Pay_Period_End}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 font-medium">
-                      {detail.Amount_Due}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 font-medium">
-                      {detail.Amount_Paid}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 font-medium">
-                      {detail.Payment_Difference}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 font-medium">
-                      {detail.Status}
-                    </td>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {networks.map((network) => (
+            <button
+              key={network}
+              onClick={() => setSelectedNetwork(network)}
+              className={`p-4 rounded-lg shadow ${
+                selectedNetwork === network
+                  ? 'bg-blue-50 border-2 border-blue-500'
+                  : 'bg-white hover:bg-gray-50'
+              }`}
+            >
+              <h3 className="font-semibold">{network}</h3>
+            </button>
+          ))}
+        </div>
+
+        {selectedNetwork && networkInvoices.length > 0 && (
+          <div className="mt-8">
+            <h2 className="text-xl font-semibold mb-4">{selectedNetwork} Invoices</h2>
+            <div className="bg-white rounded-lg shadow overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      Invoice Number
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      Amount Due
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      Pay Period
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      Status
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {networkInvoices.map((invoice, index) => (
+                    <tr key={index} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {invoice.Invoice_Number}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {invoice.Amount_Due}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {invoice.Pay_Period}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {invoice.Status}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </div>

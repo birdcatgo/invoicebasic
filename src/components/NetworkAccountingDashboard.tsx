@@ -1,10 +1,8 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from 'react';
-import { BarChart3, AlertCircle, XCircle, Download } from 'lucide-react';
-import { useNetworkData, updateInvoice } from '@/hooks/useNetworkData';
-import NetworkView from './NetworkView';
-import { networkAliases } from '@/utils/networkAliases';
+import { BarChart3 } from 'lucide-react'; // Only keep what you need
+import { useNetworkData } from '@/hooks/useNetworkData'; // Only keep what you need
 import Link from 'next/link';
 
 // Define Invoice type
@@ -30,6 +28,7 @@ interface Sections {
   unpaidInvoices: Invoice[];
   discrepancyCheck: Invoice[];
   needsInvoicing: Invoice[];
+  alertInvoices: Invoice[];
 }
 
 // Define SectionKey type (remove null)
@@ -44,7 +43,7 @@ interface InvoiceTableProps {
 }
 
 // StatsCard Component
-const StatsCard = ({ title, value, icon: Icon }: { title: string; value: string | number; icon: any }) => (
+const StatsCard = ({ title, value, icon: Icon }: { title: string; value: string | number; icon: React.ElementType }) => (
   <div className="bg-white rounded-lg shadow p-6">
     <div className="flex items-center justify-between mb-4">
       <div>
@@ -78,12 +77,6 @@ const InvoiceRow = ({ invoice, onUpdate, onUndo, type }: InvoiceRowProps) => {
     if (!amount) return '';
     const value = parseFloat(amount.replace(/[$,]/g, '') || '0');
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
-  };
-
-  const calculatePaymentDifference = (invoice: Invoice) => {
-    const amountDue = parseFloat(invoice.Amount_Due.replace(/[$,]/g, '') || '0');
-    const amountPaid = parseFloat(invoice.Amount_Paid.replace(/[$,]/g, '') || '0');
-    return amountDue - amountPaid;
   };
 
   const handleUpdate = () => {
@@ -158,7 +151,7 @@ const InvoiceRow = ({ invoice, onUpdate, onUndo, type }: InvoiceRowProps) => {
         </>
       )}
       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-        {formatCurrency(calculatePaymentDifference(invoice).toString())}
+        {formatCurrency((parseFloat(invoice.Amount_Due.replace(/[$,]/g, '') || '0') - parseFloat(invoice.Amount_Paid.replace(/[$,]/g, '') || '0')).toString())}
       </td>
       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
         {isDiscrepancy(invoice) ? (
@@ -247,8 +240,16 @@ const DiscrepancyCheckSection = ({ invoices, onUpdate, onUndo }: { invoices: Inv
   </div>
 );
 
+// AlertSection Component
+const AlertSection = ({ invoices, onUpdate, onUndo }: { invoices: Invoice[], onUpdate: (invoice: Invoice) => void, onUndo: (invoice: Invoice) => void }) => (
+  <div className="mb-8">
+    <h2 className="text-lg font-semibold mb-4 text-red-600">Payment Alerts</h2>
+    <InvoiceTable invoices={invoices} onUpdate={onUpdate} onUndo={onUndo} type="unpaid" />
+  </div>
+);
+
 // InvoicingSection Component
-const InvoicingSection = ({ invoices, onUpdate, onUndo }: { invoices: Invoice[], onUpdate: (invoice: Invoice) => void, onUndo: (invoice: Invoice) => void }) => {
+export const InvoicingSection = ({ invoices, onUpdate, onUndo }: { invoices: Invoice[], onUpdate: (invoice: Invoice) => void, onUndo: (invoice: Invoice) => void }) => {
   const filteredInvoices = invoices.filter(inv => inv.Network && inv.Amount_Due !== '0');
   return (
     <div className="mb-8">
@@ -259,7 +260,7 @@ const InvoicingSection = ({ invoices, onUpdate, onUndo }: { invoices: Invoice[],
 };
 
 // UnpaidSection Component
-const UnpaidSection = ({ invoices, onUpdate, onUndo }: { invoices: Invoice[], onUpdate: (invoice: Invoice) => void, onUndo: (invoice: Invoice) => void }) => (
+export const UnpaidSection = ({ invoices, onUpdate, onUndo }: { invoices: Invoice[], onUpdate: (invoice: Invoice) => void, onUndo: (invoice: Invoice) => void }) => (
   <div className="mb-8">
     <h2 className="text-lg font-semibold mb-4">Unpaid Invoices</h2>
     <InvoiceTable invoices={invoices} onUpdate={onUpdate} onUndo={onUndo} type="unpaid" />
@@ -270,21 +271,18 @@ const UnpaidSection = ({ invoices, onUpdate, onUndo }: { invoices: Invoice[], on
 const NetworkAccountingDashboard = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
-  const { loading, error, invoices, setInvoices, summaryStats, missingNetworks } = useNetworkData();
-  const [selectedNetwork, setSelectedNetwork] = useState<string | null>(null);
+  const { loading, error, invoices, setInvoices } = useNetworkData();
   const [sections, setSections] = useState<Sections>({
     currentPeriod: [],
     unpaidInvoices: [],
     discrepancyCheck: [],
     needsInvoicing: [],
+    alertInvoices: [],
   });
 
-  // Parse the raw data
   useEffect(() => {
     if (invoices) {
-      console.log('Raw invoices data:', invoices); // Debugging: Log raw data
       const parsedData = parseData(invoices);
-      console.log('Parsed sections:', parsedData); // Debugging: Log parsed data
       setSections(parsedData);
     }
   }, [invoices]);
@@ -295,12 +293,13 @@ const NetworkAccountingDashboard = () => {
       unpaidInvoices: [],
       discrepancyCheck: [],
       needsInvoicing: [],
+      alertInvoices: [],
     };
 
     let currentSection: SectionKey | null = null;
 
     data.forEach((row) => {
-      if (row.length === 0 || !row.Network) return; // Skip empty rows or rows without a Network
+      if (row.length === 0 || !row.Network) return;
 
       // Detect section headers
       if (row.Network === 'Current Period Networks with Ad Revenue:') {
@@ -314,6 +313,9 @@ const NetworkAccountingDashboard = () => {
         return;
       } else if (row.Network === 'Needs Invoicing:') {
         currentSection = 'needsInvoicing';
+        return;
+      } else if (row.Network === 'Alert!') {
+        currentSection = 'alertInvoices';
         return;
       }
 
@@ -333,16 +335,19 @@ const NetworkAccountingDashboard = () => {
         Amount_Paid: row.Amount_Paid || '',
         Date_Paid: row.Date_Paid || '',
         Payment_Difference: row.Payment_Difference || '',
-        Ad_Revenue: row.Ad_Revenue || '', // Default to empty string if undefined
-        Paid_Date: row.Paid_Date || '', // Default to empty string if undefined
+        Ad_Revenue: row.Ad_Revenue || '',
+        Paid_Date: row.Paid_Date || '',
       };
 
       // Add to the appropriate section
       if (currentSection) {
         sections[currentSection].push(invoice);
       } else if (invoice.Status === 'Current') {
-        // If no section is explicitly set, but the invoice status is 'Current', add it to currentPeriod
         sections.currentPeriod.push(invoice);
+      } else if (invoice.Status === 'ALERT!') {
+        sections.alertInvoices.push(invoice);
+      } else if (invoice.Status === 'Unpaid') {
+        sections.unpaidInvoices.push(invoice);
       }
     });
 
@@ -427,6 +432,15 @@ const NetworkAccountingDashboard = () => {
             invoices={filteredCurrentPeriod}
             onUpdate={(invoice: Invoice) => handleUpdate(invoice, 'currentPeriod')}
             onUndo={() => handleUndo('currentPeriod')}
+          />
+        )}
+
+        {/* Alert Section */}
+        {sections.alertInvoices.length > 0 && (
+          <AlertSection
+            invoices={sections.alertInvoices}
+            onUpdate={(invoice: Invoice) => handleUpdate(invoice, 'alertInvoices')}
+            onUndo={() => handleUndo('alertInvoices')}
           />
         )}
 
