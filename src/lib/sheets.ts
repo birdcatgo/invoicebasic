@@ -1,5 +1,6 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { getSheetData, updateSheetData, SPREADSHEET_IDS } from '@/lib/sheets';
+import { google } from 'googleapis';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
@@ -34,4 +35,40 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     console.error('Error in sheets API:', error);
     res.status(500).json({ error: 'An error occurred' });
   }
+}
+
+export async function authorizeGoogleSheets() {
+  const auth = new google.auth.GoogleAuth({
+    credentials: {
+      client_email: process.env.GOOGLE_SHEETS_CLIENT_EMAIL,
+      private_key: process.env.GOOGLE_SHEETS_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+    },
+    scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
+  });
+
+  return google.sheets({ version: 'v4', auth });
+}
+
+export async function getSheetData(spreadsheetId: string, range: string) {
+  const sheets = await authorizeGoogleSheets();
+  const response = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range,
+  });
+
+  return response.data.values || [];
+}
+
+export async function updateSheetData(spreadsheetId: string, range: string, values: any[][]) {
+  const sheets = await authorizeGoogleSheets();
+  const response = await sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range,
+    valueInputOption: 'USER_ENTERED',
+    requestBody: {
+      values,
+    },
+  });
+
+  return response.data;
 }

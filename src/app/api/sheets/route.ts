@@ -1,32 +1,5 @@
 import { NextResponse } from 'next/server';
-import { google } from 'googleapis';
-
-const SPREADSHEET_IDS = {
-  networkAccounting: process.env.GOOGLE_SHEETS_NETWORK_ACCOUNTING_ID,
-  cashFlow: process.env.GOOGLE_SHEETS_CASHFLOW_ID,
-};
-
-async function authorizeGoogleSheets() {
-  const auth = new google.auth.GoogleAuth({
-    credentials: {
-      client_email: process.env.GOOGLE_SHEETS_CLIENT_EMAIL,
-      private_key: process.env.GOOGLE_SHEETS_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-    },
-    scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
-  });
-
-  return google.sheets({ version: 'v4', auth });
-}
-
-async function getSheetData(spreadsheetId: string, range: string) {
-  const sheets = await authorizeGoogleSheets();
-  const response = await sheets.spreadsheets.values.get({
-    spreadsheetId,
-    range,
-  });
-
-  return response.data.values || [];
-}
+import { getSheetData, SPREADSHEET_IDS } from '@/lib/sheets';
 
 export async function GET(request: Request) {
   try {
