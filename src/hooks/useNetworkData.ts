@@ -1,14 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-
-interface Invoice {
-  Network: string;
-  Invoice_Number: string;
-  Amount_Due: string;
-  Pay_Period?: string;  // For Current Network Exposure
-  Status?: string;      // For Unpaid Invoices
-}
+import type { Invoice } from '@/types/invoice';
 
 interface SummaryStats {
   totalInvoices: number;

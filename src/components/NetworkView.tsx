@@ -3,6 +3,7 @@ import { useNetworkData, updateInvoice } from '@/hooks/useNetworkData';
 import { ArrowLeft } from 'lucide-react';
 import { InvoicingSection, UnpaidSection } from './NetworkAccountingDashboard';
 import { networkAliases } from '@/utils/networkAliases';
+import type { Invoice } from '@/types/invoice';
 
 interface NetworkViewProps {
   networkName: string;
@@ -36,7 +37,7 @@ const NetworkView = ({ networkName, onBack }: NetworkViewProps) => {
     return <div>Error: {error}</div>;
   }
 
-  // Filter invoices for this network - case insensitive matching
+  // Filter invoices for this network
   const networkInvoices = invoices
     .filter(inv => {
       const invNetwork = inv.Network.trim().toLowerCase();
@@ -54,18 +55,19 @@ const NetworkView = ({ networkName, onBack }: NetworkViewProps) => {
              invAlias === searchAlias;
     })
     .sort((a, b) => {
-      // Sort by Pay Period End date, most recent first
-      return new Date(b.Pay_Period_End).getTime() - new Date(a.Pay_Period_End).getTime();
+      // Sort by Pay Period, most recent first
+      const getDate = (period: string = '') => {
+        const dates = period.split('-');
+        return dates.length > 1 ? new Date(dates[1].trim()) : new Date(period);
+      };
+
+      return getDate(b.Pay_Period).getTime() - getDate(a.Pay_Period).getTime();
     });
 
   // Create sections for different statuses
   const needsInvoicing = networkInvoices.filter(inv => inv.Status === 'Needs Invoicing');
   const unpaidInvoices = networkInvoices.filter(inv => inv.Status === 'Unpaid');
   const paidInvoices = networkInvoices.filter(inv => inv.Status === 'Paid');
-  const futureInvoices = networkInvoices.filter(inv => {
-    const dueDate = new Date(inv.Due_Date);
-    return dueDate > new Date();
-  });
 
   return (
     <div className="min-h-screen bg-gray-50 p-8">
@@ -101,17 +103,6 @@ const NetworkView = ({ networkName, onBack }: NetworkViewProps) => {
             <h2 className="text-lg font-semibold mb-4">Paid Invoices</h2>
             <UnpaidSection 
               invoices={paidInvoices} 
-              onUpdate={handleUpdate} 
-              onUndo={handleUndo} 
-            />
-          </div>
-        )}
-
-        {futureInvoices.length > 0 && (
-          <div className="mb-8">
-            <h2 className="text-lg font-semibold mb-4">Future Pay Periods</h2>
-            <UnpaidSection 
-              invoices={futureInvoices} 
               onUpdate={handleUpdate} 
               onUndo={handleUndo} 
             />

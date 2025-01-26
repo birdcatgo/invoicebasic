@@ -4,23 +4,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { BarChart3 } from 'lucide-react'; // Only keep what you need
 import { useNetworkData } from '@/hooks/useNetworkData'; // Only keep what you need
 import Link from 'next/link';
-
-// Define Invoice type
-interface Invoice {
-  Network: string;
-  Pay_Period_Start: string;
-  Pay_Period_End: string;
-  Due_Date: string;
-  Amount_Due: string;
-  Invoice_Number: string;
-  Status: string;
-  Due_Status: string;
-  Amount_Paid: string;
-  Date_Paid: string;
-  Payment_Difference: string;
-  Ad_Revenue: string; // Required
-  Paid_Date: string; // Required
-}
+import type { Invoice } from '@/types/invoice';
 
 // Define Sections type
 interface Sections {
@@ -74,9 +58,11 @@ const InvoiceRow = ({ invoice, onUpdate, onUndo, type }: InvoiceRowProps) => {
   const datePaidRef = useRef<HTMLInputElement>(null);
 
   const formatCurrency = (amount: string) => {
-    if (!amount) return '';
     const value = parseFloat(amount.replace(/[$,]/g, '') || '0');
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
+    return new Intl.NumberFormat('en-US', { 
+      style: 'currency', 
+      currency: 'USD' 
+    }).format(value);
   };
 
   const handleUpdate = () => {
@@ -101,11 +87,15 @@ const InvoiceRow = ({ invoice, onUpdate, onUndo, type }: InvoiceRowProps) => {
 
   return (
     <tr className="hover:bg-gray-50">
-      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 font-medium">{invoice.Network}</td>
-      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{formatDate(invoice.Pay_Period_Start)}</td>
-      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{formatDate(invoice.Pay_Period_End)}</td>
-      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{formatDate(invoice.Due_Date)}</td>
-      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 font-medium">{formatCurrency(invoice.Amount_Due)}</td>
+      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 font-medium">
+        {invoice.Network}
+      </td>
+      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+        {invoice.Pay_Period}
+      </td>
+      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 font-medium">
+        {formatCurrency(invoice.Amount_Due)}
+      </td>
       <td className="px-4 py-3 whitespace-nowrap">
         <input
           ref={invoiceNumberRef}
@@ -130,7 +120,9 @@ const InvoiceRow = ({ invoice, onUpdate, onUndo, type }: InvoiceRowProps) => {
               {invoice.Due_Status}
             </span>
           </td>
-          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{formatCurrency(invoice.Ad_Revenue)}</td>
+          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+            {formatCurrency(invoice.Ad_Revenue)}
+          </td>
           <td className="px-4 py-3 whitespace-nowrap">
             <input
               ref={amountPaidRef}
@@ -151,7 +143,7 @@ const InvoiceRow = ({ invoice, onUpdate, onUndo, type }: InvoiceRowProps) => {
         </>
       )}
       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-        {formatCurrency((parseFloat(invoice.Amount_Due.replace(/[$,]/g, '') || '0') - parseFloat(invoice.Amount_Paid.replace(/[$,]/g, '') || '0')).toString())}
+        {formatCurrency(invoice.Payment_Difference)}
       </td>
       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
         {isDiscrepancy(invoice) ? (
@@ -190,9 +182,7 @@ const InvoiceTable = ({ invoices, onUpdate, onUndo, type }: InvoiceTableProps) =
         <thead className="bg-gray-50">
           <tr>
             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Network</th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pay Period Start</th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pay Period End</th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Due Date</th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pay Period</th>
             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount Due</th>
             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Invoice Number</th>
             {type === 'unpaid' && (
@@ -325,18 +315,15 @@ const NetworkAccountingDashboard = () => {
       // Map rows to objects
       const invoice: Invoice = {
         Network: row.Network || '',
-        Pay_Period_Start: row.Pay_Period_Start || '',
-        Pay_Period_End: row.Pay_Period_End || '',
-        Due_Date: row.Due_Date || '',
-        Amount_Due: row.Amount_Due || '',
+        Pay_Period: row.Pay_Period || '',
+        Amount_Due: row.Amount_Due || '0',
         Invoice_Number: row.Invoice_Number || '',
-        Status: row.Status || '',
-        Due_Status: row.Due_Status || '',
-        Amount_Paid: row.Amount_Paid || '',
-        Date_Paid: row.Date_Paid || '',
-        Payment_Difference: row.Payment_Difference || '',
-        Ad_Revenue: row.Ad_Revenue || '',
+        Status: row.Status || 'Needs Invoicing',
+        Due_Status: row.Due_Status || 'Not Due',
+        Amount_Paid: row.Amount_Paid || '0',
         Paid_Date: row.Paid_Date || '',
+        Payment_Difference: row.Payment_Difference || '0',
+        Ad_Revenue: row.Ad_Revenue || '0'
       };
 
       // Add to the appropriate section
