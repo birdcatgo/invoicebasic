@@ -22,29 +22,12 @@ export const useNetworkData = () => {
     missingNetworks: [],
   });
 
-  // Fetch all networks
-  const fetchNetworks = async () => {
-    try {
-      const response = await fetch('/api/networks');
-      const data = await response.json();
-      setNetworks(data);
-    } catch (err) {
-      console.error('Error fetching networks:', err);
-      setError('Failed to fetch networks');
-    }
-  };
-
-  // Fetch network details
-  const fetchNetworkDetails = (network: string): Invoice[] => {
-    return invoices.filter((invoice) => invoice.Network === network);
-  };
-
-  // Fetch all data (invoices and networks)
+  // Fetch all data
   const fetchData = async () => {
     try {
       const response = await fetch('/api/sheets?sheet=networkAccounting&range=A:Z');
       const data = await response.json();
-      console.log('Fetched data:', data); // Debug log
+      console.log('Fetched data:', data);
       
       if (data.success && data.data) {
         setInvoices(data.data);
@@ -61,19 +44,9 @@ export const useNetworkData = () => {
 
   useEffect(() => {
     fetchData();
-    fetchNetworks();
   }, []);
 
-  return {
-    loading,
-    error,
-    invoices,
-    setInvoices,
-    summaryStats,
-    missingNetworks: summaryStats.missingNetworks,
-    networks,
-    fetchNetworkDetails,
-  };
+  return { loading, error, invoices, setInvoices, summaryStats, missingNetworks: summaryStats.missingNetworks, networks };
 };
 
 export const updateInvoice = async (invoice: Invoice) => {
