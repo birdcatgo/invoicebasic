@@ -21,7 +21,7 @@ type SectionKey = keyof Sections;
 // Define InvoiceTableProps type
 interface InvoiceTableProps {
   invoices: Invoice[];
-  onUpdate: (invoice: Invoice) => void;
+  onUpdate: (invoice: Invoice, section?: SectionKey) => void;
   onUndo: (invoice: Invoice) => void;
   type: 'invoicing' | 'unpaid' | 'current';
 }
@@ -47,16 +47,17 @@ const StatsCard = ({ title, value, icon: Icon }: { title: string; value: string 
 // InvoiceRow Component
 interface InvoiceRowProps {
   invoice: Invoice;
-  onUpdate: (invoice: Invoice) => void;
+  onUpdate: (invoice: Invoice, section?: SectionKey) => void;
   onUndo: (invoice: Invoice) => void;
   type: 'invoicing' | 'unpaid' | 'current';
 }
 
 const InvoiceRow = ({ invoice, onUpdate, onUndo, type }: InvoiceRowProps) => {
   const invoiceNumberRef = useRef<HTMLInputElement>(null);
+  const dashboardAmountRef = useRef<HTMLInputElement>(null);
   const amountPaidRef = useRef<HTMLInputElement>(null);
-  const datePaidRef = useRef<HTMLInputElement>(null);
-  const amountDueRef = useRef<HTMLInputElement>(null);
+  const paidDateRef = useRef<HTMLInputElement>(null);
+  const dueStatusRef = useRef<HTMLSelectElement>(null);
 
   const formatCurrency = (amount: string) => {
     const value = parseFloat(amount.replace(/[$,]/g, '') || '0');
@@ -71,17 +72,17 @@ const InvoiceRow = ({ invoice, onUpdate, onUndo, type }: InvoiceRowProps) => {
       const updatedInvoice = {
         ...invoice,
         Invoice_Number: invoiceNumberRef.current?.value || '',
-        Amount_Due: amountDueRef.current?.value?.replace(/[$,]/g, '') || invoice.Amount_Due,
+        Amount_Due: dashboardAmountRef.current?.value?.replace(/[$,]/g, '') || invoice.Amount_Due,
       };
-      onUpdate(updatedInvoice);
+      onUpdate(updatedInvoice, 'currentPeriod');
     } else if (type === 'unpaid') {
       const updatedInvoice = {
         ...invoice,
-        Invoice_Number: invoiceNumberRef.current?.value || '',
-        Amount_Paid: amountPaidRef.current?.value?.replace(/[$,]/g, '') || '',
-        Paid_Date: datePaidRef.current?.value || '',
+        Amount_Paid: amountPaidRef.current?.value?.replace(/[$,]/g, '') || '0',
+        Paid_Date: paidDateRef.current?.value || '',
+        Due_Status: dueStatusRef.current?.value || 'Not Due'
       };
-      onUpdate(updatedInvoice);
+      onUpdate(updatedInvoice, 'unpaidInvoices');
     }
   };
 
@@ -97,54 +98,35 @@ const InvoiceRow = ({ invoice, onUpdate, onUndo, type }: InvoiceRowProps) => {
 
   return (
     <tr className="hover:bg-gray-50">
-      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 font-medium">
-        {invoice.Network}
+      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{invoice.Network}</td>
+      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{invoice.Pay_Period}</td>
+      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{formatCurrency(invoice.Amount_Due)}</td>
+      <td className="px-4 py-3 whitespace-nowrap">
+        {type === 'current' ? (
+          <input
+            ref={invoiceNumberRef}
+            type="text"
+            className="w-32 px-2 py-1 text-sm border rounded focus:ring-2 focus:ring-blue-500"
+            defaultValue={invoice.Invoice_Number}
+            placeholder="Enter invoice #"
+          />
+        ) : (
+          <span className="text-sm text-gray-900">{invoice.Invoice_Number}</span>
+        )}
       </td>
-      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-        {invoice.Pay_Period}
-      </td>
-      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 font-medium">
-        {formatCurrency(invoice.Amount_Due)}
-      </td>
-      {type === 'current' && (
-        <>
-          <td className="px-4 py-3 whitespace-nowrap">
-            <input
-              ref={invoiceNumberRef}
-              type="text"
-              className="w-32 px-2 py-1 text-sm border rounded focus:ring-2 focus:ring-blue-500"
-              defaultValue={invoice.Invoice_Number}
-              placeholder="Enter invoice #"
-            />
-          </td>
-          <td className="px-4 py-3 whitespace-nowrap">
-            <input
-              ref={amountDueRef}
-              type="text"
-              className="w-32 px-2 py-1 text-sm border rounded focus:ring-2 focus:ring-blue-500"
-              defaultValue={formatCurrency(invoice.Amount_Due)}
-              placeholder="Enter amount"
-            />
-          </td>
-        </>
-      )}
       {type === 'unpaid' && (
         <>
           <td className="px-4 py-3 whitespace-nowrap">
-            <span className={`px-2 py-1 text-sm rounded-full ${
-              invoice.Due_Status === 'Overdue' 
-                ? 'bg-red-100 text-red-800'
-                : invoice.Due_Status === 'Alert'
-                ? 'bg-yellow-100 text-yellow-800'
-                : invoice.Due_Status === 'Paid'
-                ? 'bg-green-100 text-green-800'
-                : 'bg-gray-100 text-gray-800'
-            }`}>
-              {invoice.Due_Status}
-            </span>
-          </td>
-          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-            {formatCurrency(invoice.Ad_Revenue)}
+            <select
+              ref={dueStatusRef}
+              className="w-32 px-2 py-1 text-sm border rounded focus:ring-2 focus:ring-blue-500"
+              defaultValue={invoice.Due_Status}
+            >
+              <option value="Not Due">Not Due</option>
+              <option value="Overdue">Overdue</option>
+              <option value="Paid">Paid</option>
+              <option value="Alert">Alert</option>
+            </select>
           </td>
           <td className="px-4 py-3 whitespace-nowrap">
             <input
@@ -157,7 +139,7 @@ const InvoiceRow = ({ invoice, onUpdate, onUndo, type }: InvoiceRowProps) => {
           </td>
           <td className="px-4 py-3 whitespace-nowrap">
             <input
-              ref={datePaidRef}
+              ref={paidDateRef}
               type="date"
               className="w-32 px-2 py-1 text-sm border rounded focus:ring-2 focus:ring-blue-500"
               defaultValue={invoice.Paid_Date}
@@ -165,18 +147,17 @@ const InvoiceRow = ({ invoice, onUpdate, onUndo, type }: InvoiceRowProps) => {
           </td>
         </>
       )}
-      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-        {formatCurrency(invoice.Payment_Difference)}
-      </td>
-      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-        {isDiscrepancy(invoice) ? (
-          <span className="px-2 py-1 text-sm rounded-full bg-red-100 text-red-800">
-            Discrepancy
-          </span>
+      <td className="px-4 py-3 whitespace-nowrap">
+        {type === 'current' ? (
+          <input
+            ref={dashboardAmountRef}
+            type="text"
+            className="w-32 px-2 py-1 text-sm border rounded focus:ring-2 focus:ring-blue-500"
+            defaultValue={formatCurrency(invoice.Amount_Due)}
+            placeholder="Enter amount"
+          />
         ) : (
-          <span className="px-2 py-1 text-sm rounded-full bg-green-100 text-green-800">
-            No Discrepancy
-          </span>
+          <span className="text-sm text-gray-900">{formatCurrency(invoice.Payment_Difference)}</span>
         )}
       </td>
       <td className="px-4 py-3 whitespace-nowrap space-x-2">
@@ -211,22 +192,22 @@ const InvoiceTable = ({ invoices, onUpdate, onUndo, type }: InvoiceTableProps) =
             {type === 'unpaid' && (
               <>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Due Status</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ad Revenue</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount Paid</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Paid Date</th>
               </>
             )}
-            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Payment Difference</th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Discrepancy Check</th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              {type === 'current' ? 'Dashboard Amount' : 'Payment Difference'}
+            </th>
             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
           </tr>
         </thead>
         <tbody className="bg-white divide-y divide-gray-200">
           {invoices.map((invoice: Invoice, index: number) => (
             <InvoiceRow
-              key={`${invoice.Network}-${index}`}
+              key={`${invoice.Network}-${invoice.Pay_Period}-${index}`}
               invoice={invoice}
-              onUpdate={onUpdate}
+              onUpdate={(invoice) => onUpdate(invoice, type === 'current' ? 'currentPeriod' : type === 'unpaid' ? 'unpaidInvoices' : 'discrepancyCheck')}
               onUndo={onUndo}
               type={type}
             />
@@ -314,6 +295,8 @@ const NetworkAccountingDashboard = () => {
   }, [invoices]);
 
   const parseData = (data: any[]): Sections => {
+    console.log('Raw data:', data);
+
     const sections: Sections = {
       currentPeriod: [],
       unpaidInvoices: [],
@@ -324,56 +307,82 @@ const NetworkAccountingDashboard = () => {
 
     let currentSection: SectionKey | null = null;
 
-    data.forEach((row) => {
-      if (row.length === 0 || !row.Network) return;
+    data.forEach((row, index) => {
+      if (row.length === 0) return;
 
       // Detect section headers
-      if (row.Network === 'Current Period Networks with Ad Revenue:') {
+      if (row[0] === 'Current Network Exposure') {
         currentSection = 'currentPeriod';
         return;
-      } else if (row.Network === 'Unpaid Invoices:') {
+      } else if (row[0] === 'Unpaid Invoices') {
         currentSection = 'unpaidInvoices';
         return;
-      } else if (row.Network === 'Discrepancy Check:') {
+      } else if (row[0] === 'Payment Alerts') {  // Updated header name
+        currentSection = 'alertInvoices';
+        return;
+      } else if (row[0] === 'Discrepancy Check:') {
         currentSection = 'discrepancyCheck';
         return;
-      } else if (row.Network === 'Needs Invoicing:') {
+      } else if (row[0] === 'Needs Invoicing:') {
         currentSection = 'needsInvoicing';
-        return;
-      } else if (row.Network === 'Alert!') {
-        currentSection = 'alertInvoices';
         return;
       }
 
       // Skip header rows
-      if (row.Network === 'Network') return;
+      if (row[0] === 'Network' || !currentSection) return;
 
       // Map rows to objects
-      const invoice: Invoice = {
-        Network: row.Network || '',
-        Pay_Period: row.Pay_Period || '',
-        Amount_Due: row.Amount_Due || '0',
-        Invoice_Number: row.Invoice_Number || '',
-        Status: row.Status || 'Needs Invoicing',
-        Due_Status: row.Due_Status || 'Not Due',
-        Amount_Paid: row.Amount_Paid || '0',
-        Paid_Date: row.Paid_Date || '',
-        Payment_Difference: row.Payment_Difference || '0',
-        Ad_Revenue: row.Ad_Revenue || '0'
-      };
+      if (row[0] && typeof row[0] === 'string') {
+        let invoice: Invoice;
+        
+        if (currentSection === 'currentPeriod') {
+          invoice = {
+            Network: row[0] || '',
+            Invoice_Number: row[1] || '',
+            Amount_Due: row[2]?.replace(/[$,]/g, '') || '0',
+            Pay_Period: row[3] || '',
+            Status: '',
+            Due_Status: 'Not Due',
+            Amount_Paid: '0',
+            Paid_Date: '',
+            Payment_Difference: '0',
+            Ad_Revenue: '0'
+          };
+        } else if (currentSection === 'alertInvoices') {  // Special handling for Payment Alerts
+          invoice = {
+            Network: row[0] || '',
+            Invoice_Number: row[1] || '',
+            Amount_Due: row[2]?.replace(/[$,]/g, '') || '0',
+            Amount_Paid: row[3]?.replace(/[$,]/g, '') || '0',
+            Payment_Difference: row[4]?.replace(/[$,]/g, '') || '0',
+            Pay_Period: row[5] || '',
+            Status: 'Alert',
+            Due_Status: 'Alert',
+            Paid_Date: '',
+            Ad_Revenue: '0'
+          };
+        } else {
+          invoice = {
+            Network: row[0] || '',
+            Invoice_Number: row[1] || '',
+            Amount_Due: row[2]?.replace(/[$,]/g, '') || '0',
+            Status: row[3] || '',
+            Pay_Period: row[4] || '',
+            Due_Status: row[5] === 'Yes' ? 'Overdue' : 'Not Due',
+            Amount_Paid: row[6] || '0',
+            Paid_Date: row[7] || '',
+            Payment_Difference: row[8] || '0',
+            Ad_Revenue: row[9] || '0'
+          };
+        }
 
-      // Add to the appropriate section
-      if (currentSection) {
-        sections[currentSection].push(invoice);
-      } else if (invoice.Status === 'Current') {
-        sections.currentPeriod.push(invoice);
-      } else if (invoice.Status === 'ALERT!') {
-        sections.alertInvoices.push(invoice);
-      } else if (invoice.Status === 'Unpaid') {
-        sections.unpaidInvoices.push(invoice);
+        if (currentSection) {
+          sections[currentSection].push(invoice);
+        }
       }
     });
 
+    console.log('Parsed sections:', sections);
     return sections;
   };
 
@@ -392,8 +401,10 @@ const NetworkAccountingDashboard = () => {
   const filteredDiscrepancyCheck = filterInvoices(sections.discrepancyCheck, searchTerm, statusFilter);
 
   // Handle update and undo
-  const handleUpdate = async (invoice: Invoice, section: SectionKey) => {
+  const handleUpdate = async (invoice: Invoice, section?: SectionKey) => {
     try {
+      if (!section) return; // Early return if section is undefined
+      
       const updatedInvoice = { ...invoice };
       const updatedSections = { ...sections };
       updatedSections[section] = updatedSections[section].map((inv: Invoice) =>
@@ -499,3 +510,13 @@ const NetworkAccountingDashboard = () => {
 };
 
 export default NetworkAccountingDashboard;
+
+// Helper function for Due Status colors
+const getDueStatusColor = (status: string) => {
+  switch (status) {
+    case 'Overdue': return 'bg-red-100 text-red-800';
+    case 'Alert': return 'bg-yellow-100 text-yellow-800';
+    case 'Paid': return 'bg-green-100 text-green-800';
+    default: return 'bg-gray-100 text-gray-800';
+  }
+};
