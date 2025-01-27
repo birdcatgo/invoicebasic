@@ -240,7 +240,11 @@ const CurrentPeriodSection = ({
 );
 
 // DiscrepancyCheckSection Component
-const DiscrepancyCheckSection = ({ invoices, onUpdate, onUndo }: { invoices: Invoice[], onUpdate: (invoice: Invoice) => void, onUndo: (invoice: Invoice) => void }) => (
+const DiscrepancyCheckSection = ({ invoices, onUpdate, onUndo }: { 
+  invoices: Invoice[], 
+  onUpdate: (invoice: Invoice, section?: SectionKey) => void, 
+  onUndo: (invoice: Invoice) => void 
+}) => (
   <div className="mb-8">
     <h2 className="text-lg font-semibold mb-4">Discrepancy Check</h2>
     <InvoiceTable invoices={invoices} onUpdate={onUpdate} onUndo={onUndo} type="unpaid" />
@@ -248,7 +252,11 @@ const DiscrepancyCheckSection = ({ invoices, onUpdate, onUndo }: { invoices: Inv
 );
 
 // AlertSection Component
-const AlertSection = ({ invoices, onUpdate, onUndo }: { invoices: Invoice[], onUpdate: (invoice: Invoice) => void, onUndo: (invoice: Invoice) => void }) => (
+const AlertSection = ({ invoices, onUpdate, onUndo }: { 
+  invoices: Invoice[], 
+  onUpdate: (invoice: Invoice, section?: SectionKey) => void, 
+  onUndo: (invoice: Invoice) => void 
+}) => (
   <div className="mb-8">
     <h2 className="text-lg font-semibold mb-4 text-red-600">Payment Alerts</h2>
     <InvoiceTable invoices={invoices} onUpdate={onUpdate} onUndo={onUndo} type="unpaid" />
@@ -256,7 +264,11 @@ const AlertSection = ({ invoices, onUpdate, onUndo }: { invoices: Invoice[], onU
 );
 
 // InvoicingSection Component
-export const InvoicingSection = ({ invoices, onUpdate, onUndo }: { invoices: Invoice[], onUpdate: (invoice: Invoice) => void, onUndo: (invoice: Invoice) => void }) => {
+export const InvoicingSection = ({ invoices, onUpdate, onUndo }: { 
+  invoices: Invoice[], 
+  onUpdate: (invoice: Invoice, section?: SectionKey) => void, 
+  onUndo: (invoice: Invoice) => void 
+}) => {
   const filteredInvoices = invoices.filter(inv => inv.Network && inv.Amount_Due !== '0');
   return (
     <div className="mb-8">
@@ -267,7 +279,11 @@ export const InvoicingSection = ({ invoices, onUpdate, onUndo }: { invoices: Inv
 };
 
 // UnpaidSection Component
-export const UnpaidSection = ({ invoices, onUpdate, onUndo }: { invoices: Invoice[], onUpdate: (invoice: Invoice) => void, onUndo: (invoice: Invoice) => void }) => (
+export const UnpaidSection = ({ invoices, onUpdate, onUndo }: { 
+  invoices: Invoice[], 
+  onUpdate: (invoice: Invoice, section?: SectionKey) => void, 
+  onUndo: (invoice: Invoice) => void 
+}) => (
   <div className="mb-8">
     <h2 className="text-lg font-semibold mb-4">Unpaid Invoices</h2>
     <InvoiceTable invoices={invoices} onUpdate={onUpdate} onUndo={onUndo} type="unpaid" />
